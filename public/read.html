@@ -5,69 +5,99 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Mensagem Confidencial</title>
   <style>
-    /* Proteções visuais e bloqueio de seleção */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background-color: #0d0d0d;
       color: #e0e0e0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      padding: 20px;
+      padding: 24px 16px;
       user-select: none;
       -webkit-user-select: none;
       -webkit-touch-callout: none;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
     }
     
-    /* Aplica Blur total se a página perder o foco (ex: tentativa de print/gravação de tela) */
-    .blur-protection {
-      filter: blur(20px);
+    .blur-active {
+      filter: blur(25px) !important;
       transition: filter 0.1s ease;
     }
 
     .card {
-      background: #1a1a1a;
-      border-radius: 12px;
-      padding: 20px;
-      margin-top: 40px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      background: #181818;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+      max-width: 500px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    h2 {
+      font-size: 1.3rem;
+      margin-bottom: 12px;
+      color: #ffffff;
     }
 
     p {
       font-size: 1.05rem;
       line-height: 1.6;
-      margin-bottom: 0;
-      transition: opacity 0.5s ease;
+      color: #cccccc;
     }
 
     .btn {
-      background: #d9534f;
-      color: white;
+      background: #e53935;
+      color: #ffffff;
       border: none;
-      padding: 15px 25px;
-      border-radius: 8px;
+      padding: 16px;
+      border-radius: 10px;
       font-size: 1rem;
-      font-weight: bold;
+      font-weight: 600;
       width: 100%;
-      margin-top: 20px;
+      margin-top: 24px;
+      cursor: pointer;
     }
 
-    .timer-bar {
-      height: 4px;
-      background: #d9534f;
+    .progress-wrapper {
       width: 100%;
-      margin-bottom: 15px;
-      transition: width 1s linear;
+      background-color: #2a2a2a;
+      height: 4px;
+      border-radius: 2px;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background-color: #e53935;
+      width: 100%;
+      transition: width 0.1s linear;
+    }
+
+    .status-msg {
+      color: #888888;
+      font-size: 0.9rem;
+      text-align: center;
+      margin-top: 15px;
     }
   </style>
 </head>
-<body id="content-body">
+<body id="app-body">
 
   <div id="setup-screen" class="card">
-    <h2>Mensagem Confidencial</h2>
-    <p>Esta mensagem só pode ser lida **uma única vez** neste iPhone. Certifique-se de estar em um local reservado antes de iniciar.</p>
+    <h2>Mensagem Restrita</h2>
+    <p>Esta é uma mensagem confidencial de leitura única, restrita exclusivamente a este iPhone.</p>
+    <p style="margin-top: 10px; font-size: 0.9rem; color: #888888;">Após clicar no botão abaixo, os parágrafos serão exibidos um por vez e apagados em seguida.</p>
     <button class="btn" onclick="startReading()">Iniciar Leitura</button>
   </div>
 
   <div id="reader-screen" class="card" style="display:none;">
-    <div id="progress" class="timer-bar"></div>
+    <div class="progress-wrapper">
+      <div id="progress" class="progress-bar"></div>
+    </div>
     <div id="paragraph-container"></div>
   </div>
 
@@ -77,41 +107,50 @@
     let paragraphs = [];
     let currentIndex = 0;
 
-    // Proteção contra perda de foco / captura de tela
-    window.addEventListener('blur', () => document.body.classList.add('blur-protection'));
-    window.addEventListener('focus', () => document.body.classList.remove('blur-protection'));
+    // Proteção contra perda de foco / gravação de tela
+    window.addEventListener('blur', () => document.getElementById('app-body').classList.add('blur-active'));
+    window.addEventListener('focus', () => document.getElementById('app-body').classList.remove('blur-active'));
 
-    // Geração de chave no IndexedDB para Trava do Dispositivo
+    // Chave no localStorage para Trava de Hardware
     async function getDeviceKey() {
-      let key = localStorage.getItem('device_secure_token');
+      let key = localStorage.getItem('device_token_v1');
       if (!key) {
         key = crypto.randomUUID();
-        localStorage.setItem('device_secure_token', key);
+        localStorage.setItem('device_token_v1', key);
       }
       return key;
     }
 
     async function startReading() {
-      const publicKey = await getDeviceKey();
-
-      const response = await fetch('/api/read-message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, publicKey })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        alert(data.error);
+      if (!token) {
+        alert("Token inválido ou ausente.");
         return;
       }
 
-      paragraphs = data.paragraphs;
-      document.getElementById('setup-screen').style.display = 'none';
-      document.getElementById('reader-screen').style.display = 'block';
+      const publicKey = await getDeviceKey();
 
-      renderNextParagraph();
+      try {
+        const response = await fetch('/api/read-message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, publicKey })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          document.getElementById('setup-screen').innerHTML = `<h2>Acesso Negado</h2><p>${data.error}</p>`;
+          return;
+        }
+
+        paragraphs = data.paragraphs;
+        document.getElementById('setup-screen').style.display = 'none';
+        document.getElementById('reader-screen').style.display = 'block';
+
+        renderNextParagraph();
+      } catch (err) {
+        alert("Erro ao conectar com o servidor.");
+      }
     }
 
     function renderNextParagraph() {
@@ -124,27 +163,29 @@
       const text = paragraphs[currentIndex];
       container.innerHTML = `<p>${text}</p>`;
 
-      // Tempo de leitura proporcional ao tamanho do texto (mínimo 5s, ~200wpm)
-      const readingTimeMs = Math.max(5000, (text.split(' ').length / 3.5) * 1000);
+      // Calcula o tempo de leitura dinâmico (mínimo de 6s ou ~200 palavras por minuto)
+      const words = text.split(' ').length;
+      const readingTimeMs = Math.max(6000, (words / 3.2) * 1000);
       
-      let timeLeft = readingTimeMs;
+      let startTime = Date.now();
       const progressBar = document.getElementById('progress');
-      progressBar.style.width = '100%';
 
-      const interval = setInterval(() => {
-        timeLeft -= 1000;
-        progressBar.style.width = `${(timeLeft / readingTimeMs) * 100}%`;
+      const timer = setInterval(() => {
+        let elapsedTime = Date.now() - startTime;
+        let remainingPercent = 100 - ((elapsedTime / readingTimeMs) * 100);
 
-        if (timeLeft <= 0) {
-          clearInterval(interval);
+        if (remainingPercent <= 0) {
+          clearInterval(timer);
           currentIndex++;
-          renderNextParagraph(); // Apaga o atual e carrega o próximo
+          renderNextParagraph();
+        } else {
+          progressBar.style.width = `${remainingPercent}%`;
         }
-      }, 1000);
+      }, 100);
     }
 
     async function finishAndDestroy() {
-      document.getElementById('reader-screen').innerHTML = "<p><em>Esta mensagem foi lida e completamente destruída do sistema.</em></p>";
+      document.getElementById('reader-screen').innerHTML = "<h2>Mensagem Destruída</h2><p style='margin-top:10px;'>O conteúdo foi lido e removido permanentemente do servidor.</p>";
       await fetch('/api/destroy-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
